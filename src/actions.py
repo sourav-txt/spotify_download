@@ -50,7 +50,7 @@ def match_liked():
 
 def download_missing():
     logger.info('Script started with -download-missing flag')
-    download.missing_tracks_new()
+    download.missing_tracks()
     logger.info('Script finished')
 
 

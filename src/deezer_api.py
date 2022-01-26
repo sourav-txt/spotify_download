@@ -30,6 +30,7 @@ def match_isrc(song):
     except:
         return False, {}
 
+
 def match_adv(song):
     deezer_search = Deezer.API.advanced_search(
         client.api, # self

@@ -10,7 +10,7 @@ if config["logging"]["level"] not in ['INFO', 'DEBUG']:
     raise Exception('Logging level should be either INFO or DEBUG')
 
 # Configure root logger
-logFormatter = logging.Formatter('[%(asctime)s] %(levelname)-6s %(name)-12s : %(message)s')
+logFormatter = logging.Formatter('[%(asctime)s] %(levelname)-9s %(name)-12s : %(message)s')
 rootLogger = logging.getLogger()
 rootLogger.setLevel(config["logging"]["level"])
 

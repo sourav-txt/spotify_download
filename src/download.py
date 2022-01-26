@@ -1,7 +1,9 @@
 from datetime import datetime
 import os, time, sys, glob, re, hashlib, json
+from typing import List
 
 # local imports
+from src.deemix_api import DownloadStatus
 from src.log import rootLogger
 from src import config
 from src import transform, deemix_api
@@ -10,15 +12,10 @@ logger = rootLogger.getChild('DOWNLOAD')
 
 config = config.load()
 download_commence = ''
-downloaded_tracks = []
+#downloaded_tracks = []
 
-def get_md5(file):
-    md5_hash = hashlib.md5()
-    with open(file, "rb") as f:
-        # Read and update hash in chunks of 4K
-        for byte_block in iter(lambda: f.read(4096), b""):
-            md5_hash.update(byte_block)
-        return md5_hash.hexdigest()
+
+
 
 
 def return_download_commence():
@@ -45,32 +42,61 @@ def missing_tracks():
     tracks = transform.get_tracks_to_download()
 
     logger.info(f'{len(tracks)} tracks pending download')
-
     if not tracks:
         logger.info('No tracks to download')
         return
 
-    global download_commence
-    download_commence = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    # global download_commence
+    # download_commence = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    urls = [v['deezer_url'] for k, v in tracks.items()]
+    logger.info(f'Downloading {len(urls)} song(s) from Deezer')
 
-    uris = {v['deezer_url'] for k, v in tracks.items()}
-    deemix_api.download_url(uris)
+    deemix_config = json.loads(
+        deemix_api.template_config
+            .replace('DOWNLOAD_LOCATION_PATH', config["deemix"]["download_path"])
+            .replace('MAX_BITRATE', config["deemix"]["max_bitrate"])
+    )
+    downloader = deemix_api.DeemixDownloader(arl=config["deemix"]["arl"], deemix_config=deemix_config, skip_low_quality=True)
+    downloader.download_urls(urls)
+    downloaded_tracks, failed_tracks = downloader.get_report()
+    logger.info(f'Successfully downloaded {len(downloaded_tracks)}/{len(urls)}')
 
-    downloaded_tracks, failed_tracks = get_downloaded_track_paths(tracks)
-
-    validated_tracks = validate_downloaded_tracks(downloaded_tracks)
-    logger.info(f'Successfullu downloaded {len(validated_tracks)}/{len(uris)}')
-
-    transform.set_tracks_as_downloaded(validated_tracks)
+    transform.set_tracks_as_downloaded(downloaded_tracks)
     transform.set_tracks_as_failed_to_download(failed_tracks)
-    get_file_download_paths(validated_tracks)
+
+    get_file_download_paths(downloaded_tracks)
+
+# def missing_tracks():
+#     logger.info('Getting missing tracks to download')
+#     tracks = transform.get_tracks_to_download()
+#
+#     logger.info(f'{len(tracks)} tracks pending download')
+#
+#     if not tracks:
+#         logger.info('No tracks to download')
+#         return
+#
+#     global download_commence
+#     download_commence = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+#
+#     uris = {v['deezer_url'] for k, v in tracks.items()}
+#     deemix_api.download_urls(uris)
+#
+#     downloaded_tracks, failed_tracks = get_downloaded_track_paths(tracks)
+#
+#     validated_tracks = validate_downloaded_tracks(downloaded_tracks)
+#     logger.info(f'Successfullu downloaded {len(validated_tracks)}/{len(uris)}')
+#
+#     transform.set_tracks_as_downloaded(validated_tracks)
+#     transform.set_tracks_as_failed_to_download(failed_tracks)
+#     get_file_download_paths(validated_tracks)
 
 
-def get_file_download_paths(tracks):
+def get_file_download_paths(download_report: List[DownloadStatus]):
     global downloaded_tracks
 
-    for k in tracks:
-        downloaded_tracks.append(tracks[k]["path"])
+    for k in download_report:
+        downloaded_tracks.append(download_report[k].download_path)
 
 
 def get_deemix_log_per_track(track, log_array):

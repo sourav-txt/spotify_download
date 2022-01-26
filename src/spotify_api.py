@@ -185,12 +185,16 @@ def merge_offline_online_liked(offline_dict, online_dict):
     ret = offline_dict.copy()
     new_liked_songs = 0
     for s in online_dict:
-        isrc = s['track']['external_ids']['isrc']
+        try:
+            isrc = s['track']['external_ids']['isrc']
+        except:
+            logger.warn(f'Spotify track {s["track"]["id"]} has no isrc, skipping')
+            continue
         if isrc not in ret:
             ret[isrc] = s
             new_liked_songs += 1
 
-    logger.info(f'Added {str(new_liked_songs)} new liked songs from Spotify')
+    logger.info(f'Added {str(new_liked_songs)} new liked song(s) from Spotify')
     return ret
 
 

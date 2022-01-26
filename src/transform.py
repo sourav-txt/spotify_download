@@ -85,7 +85,7 @@ def match_unprocessed(unprocessed_songs, processed_songs):
                 logger.debug(f'Failed to match via fuzzy search, not matching..')
                 insert_into_processed(result[1], processed_songs)
 
-    logger.info(f'Matched {matched}/{len(unprocessed_songs)} new liked songs')
+    logger.info(f'Matched {matched}/{len(unprocessed_songs)} new liked song(s)')
 
 
 def process_liked():
@@ -124,10 +124,13 @@ def set_tracks_as_downloaded(tracks):
     processed_songs = load_json(config["script"]["paths"]["processed_songs"])
 
     for k in tracks:
+        if not processed_songs.get(k):
+            x = 1
+
         processed_songs[k]['match_pending_download'] = False
         processed_songs[k]['downloaded'] = True
-        processed_songs[k]['download_path'] = tracks[k]['path']
-        processed_songs[k]['download_md5'] = tracks[k]['md5']
+        processed_songs[k]['download_path'] = tracks[k].download_path
+        processed_songs[k]['download_md5'] = tracks[k].md5
         processed_songs[k]['download_failed'] = False
         processed_songs[k]['download_failed_reason'] = None
 
@@ -143,6 +146,6 @@ def set_tracks_as_failed_to_download(failed_tracks):
         processed_songs[k]['download_path'] = None
         processed_songs[k]['download_md5'] = None
         processed_songs[k]['download_failed'] = True
-        processed_songs[k]['download_failed_reason'] = failed_tracks[k]["status"]
+        processed_songs[k]['download_failed_reason'] = "\n\n".joing(failed_tracks[k].errors)
 
     dump_json(config["script"]["paths"]["processed_songs"], processed_songs)
