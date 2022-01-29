@@ -1,33 +1,33 @@
 import requests
 from pathlib import Path
-import urllib
 
 # local imports
-from src import config
+from src.config import load as load_config
 from src.log import rootLogger
 
 logger = rootLogger.getChild('AUTOSCAN_API')
 
-config = config.load()
+config = load_config()
 
 
 def scan(paths):
-    if config['autoscan']['enabled']:
-        # get unique
-        paths = list(set(paths))
+    if config["AUTOSCAN_ENABLED"]:
+        unique = set()
         for p in paths:
             if Path(p).is_file():
                 p = Path(p).parent
+            unique.add(p)
 
+        for p in unique:
             params = {'dir': p}
 
-            if config['autoscan']['auth_enabled']:
-                response = requests.post(config['autoscan']['endpoint'], params=params, auth=(
-                    config['autoscan']['username'],
-                    config['autoscan']['password'])
+            if config["AUTOSCAN_AUTH_ENABLED"]:
+                response = requests.post(config["AUTOSCAN_ENDPOINT"], params=params, auth=(
+                    config["AUTOSCAN_USERNAME"],
+                    config["AUTOSCAN_PASSWORD"])
                 )
             else:
-                response = requests.post(config['autoscan']['endpoint'], params=params)
+                response = requests.post(config["AUTOSCAN_ENDPOINT"], params=params)
 
             if response.status_code == 200:
                 logger.debug(f'Plex scan request: {p}')

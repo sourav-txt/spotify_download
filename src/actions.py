@@ -17,14 +17,14 @@ def auto():
     spotify_api.download_liked()
     transform.process_liked()
     download.missing_tracks()
-    autoscan_api.scan(download.downloaded_tracks)
+    autoscan_api.scan(download.downloaded_track_paths)
 
     git_api.commit_files(f'Spotify Downloader auto commit {download.return_download_commence()}')
 
-    if len(download.downloaded_tracks) >= 1:
+    if len(download.downloaded_track_paths) >= 1:
         pushover_api.send_notification(
             'Spotify downloader',
-            f'Successfully downloaded {len(download.downloaded_tracks)} new tracks'
+            f'Successfully downloaded {len(download.downloaded_track_paths)} new tracks'
         )
     pushover_api.send_notification('Spotify downloader', f'Script finished')
     logger.info('Script finished')

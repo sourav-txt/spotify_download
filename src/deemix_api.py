@@ -1,8 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
 from typing import List, Dict
 from dataclasses import dataclass
+import psutil
 
 # deemix
 from deezer import Deezer
@@ -13,15 +15,24 @@ from deemix.types.Track import Track
 from deemix.types.DownloadObjects import Single
 
 # local imports
-from src import config
+from src.config import load as load_config
 from src import pushover_api
 from src.log import rootLogger
+from src.transform import ProcessedSong
 
-from src.git_api import commit_files
-
-config = config.load()
+config = load_config()
 arl_valid = False
 logger = rootLogger.getChild('DEEMIX_API')
+
+def get_threads():
+    try:
+        threads = int(config["THREADS"])
+        threads = threads if int(config["THREADS"]) <= psutil.cpu_count() else psutil.cpu_count()
+    except:
+        logger.warning(f'THREADING - Failed parsing int from "{config["THREADS"]}"')
+        threads = psutil.cpu_count()
+
+    return threads
 
 
 def get_md5(file):
@@ -33,12 +44,6 @@ def get_md5(file):
         return md5_hash.hexdigest()
 
 
-# class LogListener:
-#     @classmethod
-#     def send(cls, key, value=None):
-#         logString = formatListener(key, value)
-#         if logString: print(logString)
-
 class LogListener:
     def __init__(self):
         self.messages = []
@@ -48,27 +53,49 @@ class LogListener:
 
 
 class DownloadLogger:
-    def __init__(self, index: int, total: int, isrc: str):
+    def __init__(self, index: int, total: int, song: ProcessedSong):
         self._logger = logger
         self._downloadIndex = index
         self._downloadTotal = total
-        self._isrc = isrc
+        self._song = song
+        self._base_message: str = ""
+        self._get_base_message()
 
-    def info(self, message: str):
-        self._logger.info(f'{str(self._downloadIndex)}/{str(self._downloadTotal)} - [isrc:{self._isrc}] - {message}')
+    def _get_base_message(self):
+        if len(str(self._downloadIndex)) != len(str(self._downloadTotal)):
+            zero_to_pad = len(str(self._downloadTotal)) - len(str(self._downloadIndex))
+            self._base_message = f'{"0": <{zero_to_pad}}{str(self._downloadIndex)}/{str(self._downloadTotal)}'
+        else:
+            self._base_message = f'{str(self._downloadIndex)}/{str(self._downloadTotal)}'
 
-    def warn(self, message: str):
-        self._logger.warning(f'{str(self._downloadIndex)}/{str(self._downloadTotal)} - [isrc:{self._isrc}] - {message}')
+    @staticmethod
+    def _get_message(message):
+        return f"- {message}" if message else ''
 
-    def error(self, message: str):
-        self._logger.error(f'{str(self._downloadIndex)}/{str(self._downloadTotal)} - [isrc:{self._isrc}] - {message}')
+    def info(self, action: str, message: str):
+        self._logger.info(f'{self._base_message} - {action} [{self._song.spotify_artist} - {self._song.spotify_title}] {self._get_message(message)}')
+
+    def warn(self, action: str, message: str):
+        self._logger.warning(
+            f'{self._base_message} - {action} [{self._song.spotify_artist} - {self._song.spotify_title}] {self._get_message(message)}')
+
+    def error(self, action: str, message: str):
+        self._logger.error(
+            f'{self._base_message} - {action} [{self._song.spotify_artist} - {self._song.spotify_title}] {self._get_message(message)}')
 
 
 @dataclass
 class DownloadStatus:
     # TODO: add bitrate / file type
-    isrc: str
-    url: str
+    spotify_id: str
+    deezer_id: str
+
+    requested_isrc: str
+    downloaded_isrc: str
+
+    requested_url: str
+    downloaded_url: str
+
     success: bool
     skipped: bool
     errors: List[str]
@@ -77,17 +104,29 @@ class DownloadStatus:
 
 
 class DeemixDownloader:
-    def __init__(self, arl: str, deemix_config: dict, skip_low_quality=False):
+    def __init__(self, arl: str, config: dict, skip_low_quality=False):
         self.dz = Deezer()
-        self.deemix_config = deemix_config
+        self.config = config
         self.deezer_logged_in = self.dz.login_via_arl(arl)
-        # self.listener = LogListener()
         self.skip_low_quality = skip_low_quality
-        self.urls_to_download = list()
-        self.download_report: Dict[DownloadStatus] = {}
+        self.songs_to_download: List[ProcessedSong] = []
+        self.download_report: Dict[str, DownloadStatus] = {}
 
-    def download_urls(self, urls: list):
-        self.urls_to_download = urls
+    def download_wrapper(self, data):
+        index = data['index'] + 1
+        num_urls_to_download = data['num_urls_to_download']
+        song = data['song']
+        download_obj = data['download_obj']
+
+        logger = DownloadLogger(index=index, total=num_urls_to_download, song=song)
+        listener = LogListener()
+        dl = Downloader(self.dz, download_obj, self.config, listener)
+        logger.info(action='STARTING', message='')
+        dl.start()
+        self.update_download_report(dl.downloadObject, song, listener, logger)
+
+    def download_songs(self, songs: List[ProcessedSong]):
+        self.songs_to_download = songs
 
         if self.skip_low_quality and not self.dz.current_user.get('can_stream_lossless'):
             logger.info(f'SKIP_LOW_QUALITY is specified and unable to stream FLAC, stopping download')
@@ -98,45 +137,53 @@ class DeemixDownloader:
             raise Exception('Failed to login with arl, you may need to refresh it')
 
         logger.info(f'Gathering song information in preparation for download..')
-        download_objs = {v: generateDownloadObject(self.dz, v, '9') for v in self.urls_to_download}
-        num_urls_to_download = len(self.urls_to_download)
+
+        from timeit import default_timer as timer
+        start = timer()
+        download_objs = {v.spotify_id: {'song': v, 'download_obj': generateDownloadObject(self.dz, v.deezer_url, self.config['maxBitrate'])} for v in self.songs_to_download}
+        end = timer()
+        #print(f'Single threaded took: {str(end - start)}')  # Time in seconds, e.g. 5.38091952400282
+
+        # test multithreaded
+        # start = timer()
+        # download_objs = {}
+        # with ThreadPoolExecutor(2) as executor:
+        #     for song in self.songs_to_download:
+        #         download_objs[song.spotify_id] = {
+        #             'song': song,
+        #             'download_obj': executor.submit(generateDownloadObject(self.dz, song.deezer_url, self.config['maxBitrate']))
+        #         }
+        # end = timer()
+        # print(f'Multi threaded (2) took: {str(end - start)}')
+
+        #  raise Exception('stop')
+        num_urls_to_download = len(self.songs_to_download)
         i = 0
-        for k, obj in download_objs.items():
-            errors = None
-            try:
-                isrc = self.extract_isrc_from_download_object(obj)
-                dl_logger = DownloadLogger(index=(i+1), total=num_urls_to_download, isrc=isrc)
-                listener = LogListener()
-                # dl = Downloader(self.dz, obj, self.deemix_config, self.listener)
-                dl = Downloader(self.dz, obj, self.deemix_config, listener)
+        #for k in download_objs:
+        with ThreadPoolExecutor(get_threads()) as executor:
+            for i, k in enumerate(download_objs):
+                v = download_objs[k]
+                executor.submit(self.download_wrapper, {
+                    'index': i,
+                    'num_urls_to_download': num_urls_to_download,
+                    'song': v['song'],
+                    'download_obj': v['download_obj']
+                })
 
+            # try:
+            #     #isrc = self.extract_isrc_from_download_object(v['download_obj'])
+            #     dl_logger = DownloadLogger(index=(i+1), total=num_urls_to_download, song=v['song'])
+            #     listener = LogListener()
+            #     dl = Downloader(self.dz, v['download_obj'], self.config, listener)
+            #     dl_logger.info('Download starting')
+            #     dl.start()
+            #
+            #     self.update_download_report(dl.downloadObject, v['song'],listener, dl_logger)
+            #
+            # except Exception as ex:
+            #     logger.error(ex)
 
-                # path, fn = extract_path_and_filename_from_track_api(dl, obj)
-                # if os.path.isfile(path):
-                #     print(f'{path} is already downloaded, skipping')
-                #     self.download_report[k] = DownloadStatus(
-                #                                     isrc=isrc,
-                #                                     url=k,
-                #                                     success=True,
-                #                                     skipped=True,
-                #                                     errors=errors or [],
-                #                                     download_path=path or "",
-                #                                     md5=get_md5(path)
-                #                                 )
-                #     i += 1
-                #     continue
-
-                # logger.info(f"{str(i + 1)}/{len(self.urls_to_download)} - Downloading {fn}")
-
-                #logger.info(f"{str(i + 1)}/{len(self.urls_to_download)} - Downloading  {isrc}")
-                dl_logger.info('Download starting')
-                dl.start()
-                self.update_download_report(dl.downloadObject, isrc, k, listener, dl_logger)
-
-            except Exception as ex:
-                logger.error(ex)
-
-            i += 1
+            #i += 1
 
     @staticmethod
     def download_skipped(listener: LogListener):
@@ -148,42 +195,54 @@ class DeemixDownloader:
 
         return download_skipped
 
-
-    def update_download_report(self, download_object, isrc: str, url: str, listener: LogListener, dl_logger):
+    def update_download_report(self, download_object, requested_song: ProcessedSong, listener: LogListener, dl_logger):
         if not isinstance(download_object, Single):
             raise Exception("Not a Single, unexpected type!", download_object)
         errors = None
         md5 = ""
         status = False
         f = ""
+        downloaded_isrc = None
+        downloaded_link = None
+        downloaded_id = None
 
         if download_object.downloaded == 1:
+            downloaded_isrc = download_object.single['trackAPI']['isrc']
+            downloaded_link = download_object.single['trackAPI']['link']
+            downloaded_id = download_object.single['trackAPI']['id']
+
             f = download_object.files[0]['path']
+
             if self.download_skipped(listener):
-                #logger.warning(f'Already downloaded: {f}, skipping..')
-                dl_logger.warn(f'Already downloaded: {f}, skipping..')
+                dl_logger.info(action='FINSIHED', message=f'Skipping, already downloaded')
                 status = True
                 md5 = get_md5(f)
 
             elif os.path.isfile(f):
-                #logger.info(f'Successfully downloaded: {f}')
-                dl_logger.info(f'Successfully downloaded: {f}')
+                dl_logger.info(action='FINSIHED', message=f'Successfully downloaded')
                 status = True
                 md5 = get_md5(f)
             else:
-                #logger.warn(f'Downloaded but could not find {f}')
-                dl_logger.warn(f'Downloaded but could not find {f}')
+                dl_logger.warn(action='FINSIHED', message=f'Failed, downloaded but could not find {f}')
                 errors = [f"Downloaded but could not find {f}"]
 
         elif download_object.failed == 1:
-            #logger.warn(f'Download for DeezerId: {download_object.single["trackAPI"]["id"]} failed, errors:',
-                        #download_object.errors[0]['message'])
-            dl_logger.warn(f'Download for DeezerId: {download_object.single["trackAPI"]["id"]} failed, error: {download_object.errors[0]["message"]}')
+            dl_logger.warn(action='FINSIHED', message=f'Failed, download for DeezerId: {download_object.single["trackAPI"]["id"]} error: {download_object.errors[0]["message"]}')
             errors = download_object.errors
 
-        self.download_report[url] = DownloadStatus(isrc=isrc, url=url, success=status, skipped=False,
-                                                   errors=errors or [],
-                                                   download_path=f, md5=md5)
+        self.download_report[requested_song.spotify_id] = DownloadStatus(
+            spotify_id=requested_song.spotify_id,
+            deezer_id=downloaded_id,
+            requested_isrc=requested_song.deezer_isrc,
+            downloaded_isrc=downloaded_isrc,
+            requested_url=requested_song.deezer_url,
+            downloaded_url=downloaded_link,
+            success=status,
+            skipped=False,
+            errors=errors or [],
+            download_path=f,
+            md5=md5,
+        )
 
     def get_report(self):
         succeeded = {}
@@ -191,9 +250,9 @@ class DeemixDownloader:
 
         for v in self.download_report.values():
             if v.success:
-                succeeded[v.isrc] = v
+                succeeded[v.spotify_id] = v
             else:
-                failed[v.isrc] = v
+                failed[v.spotify_id] = v
 
         return succeeded, failed
 
@@ -225,38 +284,41 @@ def extract_path_and_filename_from_track_api(downloader: Downloader, download_ob
     return os.path.join(filepath, filename + extensions[selectedFormat]), filename
 
 
+bitrate_name_to_number = {
+    '360': 15,
+    '360_mq': 14,
+    '360_lq': 13,
+    'lossless': 9,
+    '320': 3,
+    '128': 1
+}
+
+
 def check_deemix_config():
-    if not os.path.isdir(config["deemix"]["download_path"]):
-        logger.error(f'{config["deemix"]["download_path"]} must be an existing folder')
-        raise Exception(f'{config["deemix"]["download_path"]} must be an existing folder')
+    if not os.path.isdir(config["DEEMIX_DOWNLOAD_PATH"]):
+        logger.error(f'{config["DEEMIX_DOWNLOAD_PATH"]} must be an existing folder')
+        raise Exception(f'{config["DEEMIX_DOWNLOAD_PATH"]} must be an existing folder')
 
-    if '\\' in config["deemix"]["download_path"]:
-        config["deemix"]["download_path"] = config["deemix"]["download_path"].replace("\\", "/")
+    if '\\' in config["DEEMIX_DOWNLOAD_PATH"]:
+        config["DEEMIX_DOWNLOAD_PATH"] = config["DEEMIX_DOWNLOAD_PATH"].replace("\\", "/")
 
-    # config_json = json.loads(
-    #     deemix_config
-    #         .replace('DOWNLOAD_LOCATION_PATH', config["deemix"]["download_path"])
-    #         .replace('MAX_BITRATE', config["deemix"]["max_bitrate"])
-    # )
+    accepted_bitrates = ['lossless', '320', '360', '360_mq', '360_lq', '128']
+    if config["DEEMIX_MAX_BITRATE"] not in accepted_bitrates:
+        logger.error(f'{config["DEEMIX_MAX_BITRATE"]} must be one of {",".join(accepted_bitrates)}')
 
-
-# def check_deemix_config():
-#     if not os.path.isdir(config["deemix"]["config_path"]):
-#         logger.error("config['deemix']['config_path'] must be an existing folder")
-#         raise Exception("config['deemix']['config_path'] must be an existing folder")
-#     if not os.path.isdir(config["deemix"]["download_path"]):
-#         logger.error(f'{config["deemix"]["download_path"]} must be an existing folder')
-#         raise Exception(f'{config["deemix"]["download_path"]} must be an existing folder')
-#     elif not os.path.isfile(os.path.join(config["deemix"]["config_path"], 'config.json')):
-#         if '\\' in config["deemix"]["download_path"]:
-#             config["deemix"]["download_path"] = config["deemix"]["download_path"].replace("\\", "/")
-#         config_json = json.loads(deemix_config.replace('DOWNLOAD_LOCATION_PATH', config["deemix"]["download_path"]))
-#         logger.info('Creating deemix config for first use')
-#         with open(os.path.join(config["deemix"]["config_path"], 'config.json'), mode='w', encoding='utf-8') as f:
-#             json.dump(config_json, f, indent=True)
-#         if config['git']['enabled']:
-#             # Ensure repo clean
-#             commit_files('Created deemix config for first use')
+# txt = str(txt).lower()
+#     if txt in ['flac', 'lossless', '9']:
+#         return TrackFormats.FLAC
+#     if txt in ['mp3', '320', '3']:
+#         return TrackFormats.MP3_320
+#     if txt in ['128', '1']:
+#         return TrackFormats.MP3_128
+#     if txt in ['360', '360_hq', '15']:
+#         return TrackFormats.MP4_RA3
+#     if txt in ['360_mq', '14']:
+#         return TrackFormats.MP4_RA2
+#     if txt in ['360_lq', '13']:
+#         return TrackFormats.MP4_RA1
 
 
 def check_arl_valid():
@@ -264,7 +326,7 @@ def check_arl_valid():
     global arl_valid
     if not arl_valid:
         logger.debug(f'arl_valid is False')
-        arl = config['deemix']['arl'].strip()
+        arl = config["DEEMIX_ARL"].strip()
         logger.debug(f'Logging in with arl in config.json')
         client = Deezer()
         login = client.login_via_arl(arl)
@@ -278,28 +340,19 @@ def check_arl_valid():
             raise Exception('Failed to login with arl, you may need to refresh it')
 
 
-# def download_url(url=[]):
-#     app = cli('', config['deemix']['config_path'])
-#     app.login()
-#     url = list(url)
-#     logger.info(f'Downloading {len(url)} songs from Deezer')
-#     app.downloadLink(url)
-
-
-def download_urls(urls: List[str]):
+def download_songs(songs: List[ProcessedSong]):
     #logger.info(f'Downloading {len(urls)} song(s) from Deezer')
 
     deemix_config = json.loads(
         template_config
-            .replace('DOWNLOAD_LOCATION_PATH', config["deemix"]["download_path"])
-            .replace('MAX_BITRATE', config["deemix"]["max_bitrate"])
+            .replace('DOWNLOAD_LOCATION_PATH', config["DEEMIX_DOWNLOAD_PATH"])
+            .replace('MAX_BITRATE', bitrate_name_to_number[config["DEEMIX_MAX_BITRATE"]])
     )
-    downloader = DeemixDownloader(arl=config["deemix"]["arl"], deemix_config=deemix_config, skip_low_quality=True)
-    downloader.download_urls(urls)
 
+    skip_low_quality = True if config['DEEMIX_SKIP_LOW_QUALITY'] and config['DEEMIX_MAX_BITRATE'] == 'lossless' else False
 
-def download_file(path):
-    print('Placeholder')
+    downloader = DeemixDownloader(arl=config["deemix"]["arl"], config=deemix_config, skip_low_quality=skip_low_quality)
+    downloader.download_songs(songs)
 
 
 template_config = """

@@ -1,16 +1,16 @@
 from git import Repo
 
 # Local imports
-from src import config
+from src.config import load as load_config
 from src.log import rootLogger
 from src import pushover_api
 
 logger = rootLogger.getChild('GIT_API')
-config = config.load()
+config = load_config()
 
 
 def assert_repo():
-    if config['git']['enabled']:
+    if config["GIT_ENABLED"]:
         try:
             assert check_repo_is_clean()
         except:
@@ -20,16 +20,16 @@ def assert_repo():
 
 
 def check_repo_is_clean():
-    logger.debug(f'Checking {config["git"]["persistent_data_folder_path"]} is clean')
-    repo = Repo(config['git']['persistent_data_folder_path'])
+    logger.debug(f'Checking {config["DATA_PERSISTENT_DATA_ROOT"]} is clean')
+    repo = Repo(config["DATA_PERSISTENT_DATA_ROOT"])
     return not repo.is_dirty() and len(repo.untracked_files) == 0
 
 
 def commit_files(message):
-    if config['git']['enabled']:
-        repo = Repo(config['git']['persistent_data_folder_path'])
+    if config["GIT_ENABLED"]:
+        repo = Repo(config["DATA_PERSISTENT_DATA_ROOT"])
         if repo.is_dirty() or len(repo.untracked_files) != 0:
-            logger.debug(f'Commiting files in {config["git"]["persistent_data_folder_path"]}')
+            logger.debug(f'Commiting files in {config["DATA_PERSISTENT_DATA_ROOT"]}')
             repo.git.add(all=True)
             repo.git.commit(
                 '-m',

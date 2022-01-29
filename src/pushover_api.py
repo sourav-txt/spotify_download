@@ -1,15 +1,15 @@
 from pushover import Client
 
 # local imports
-from src import config
+from src.config import load as load_config
 
-config = config.load()
+config = load_config()
 
-if config['pushover']['enabled']:
-    client = Client(config['pushover']['user_key'], api_token=config['pushover']['api_token'])
+if config["PUSHOVER_ENABLED"]:
+    client = Client(config["PUSHOVER_USER_KEY"], api_token=config["PUSHOVER_API_TOKEN"])
 
 
 def send_notification(title, message):
-    if config['pushover']['enabled']:
+    if config["PUSHOVER_ENABLED"]:
         client.send_message(message, title=title)
 

@@ -1,74 +1,98 @@
 import deezer as Deezer
 
 # local imports
-from src import config
+from deezer.errors import DataException
 
-config = config.load()
+from src.config import load as load_config
+from src.spotify_api import SpotifySong
+from src.log import rootLogger
+
+logger = rootLogger.getChild('DEEZER_API')
+config = load_config()
 
 # load Deezer and login (for downloads), API is unauthenicated
 client = Deezer.Deezer()
 
-
-def match_isrc(song):
-    try:
-        track = Deezer.API.get_track(client.api, f'isrc:{song["track"]["external_ids"]["isrc"]}')
-        return True, {
-            'spotify_title': song['track']['name'],
-            'spotify_artist': song['track']['artists'][0]['name'],
-            'spotify_isrc': song["track"]["external_ids"]["isrc"],
-            'spotify_url': song['track']['external_urls']['spotify'],
-            'spotify_id': song['track']['id'],
-            'deezer_title': track['title'],
-            'deezer_artist': track['artist']['name'],
-            'deezer_url': track['link'],
-            'deezer_id': track['id'],
-            'matched': True,
-            'match_type': 'isrc',
-            'match_pending_download': True,
-            'downloaded': False
-        }
-    except:
-        return False, {}
+# TODO: productionize
+if not client.login_via_arl(config['DEEMIX_ARL'].strip()):
+    raise Exception('arl doesnt work')
 
 
-def match_adv(song):
-    deezer_search = Deezer.API.advanced_search(
-        client.api, # self
-        song['track']['artists'][0]['name'], # artist
-        '', # album
-        song['track']['name'] # track name
-    )
+class MatchLogger:
+    def __init__(self, song: SpotifySong):
+        self._logger = logger
+        self._song = song
 
-    if len(deezer_search['data']) >= 1:
-        most_likely = deezer_search['data'][0]
-        return True, {
-            'spotify_title': song['track']['name'],
-            'spotify_artist': song['track']['artists'][0]['name'],
-            'spotify_isrc': song["track"]["external_ids"]["isrc"],
-            'spotify_url': song['track']['external_urls']['spotify'],
-            'spotify_id': song['track']['id'],
-            'deezer_title': most_likely['title'],
-            'deezer_artist': most_likely['artist']['name'],
-            'deezer_url': most_likely['link'],
-            'deezer_id': most_likely['id'],
-            'matched': True,
-            'match_type': 'fuzzy',
-            'match_pending_download': True,
-            'downloaded': False
-        }
-    else:
-        return False, {
-            'spotify_title': song['track']['name'],
-            'spotify_artist': song['track']['artists'][0]['name'],
-            'spotify_isrc': song["track"]["external_ids"]["isrc"],
-            'spotify_url': song['track']['external_urls']['spotify'],
-            'spotify_id': song['track']['id'],
-            'deezer_title': '',
-            'deezer_artist': '',
-            'deezer_url': '',
-            'deezer_id': '',
-            'matched': False,
-            'match_type': None,
-            'match_pending_download': False,
-            'downloaded': False
-        }
+    def info(self, message: str):
+        self._logger.info(f'[{self._song.artist} - {self._song.title}] - {message}')
+
+    def warning(self, message: str):
+        self._logger.warning(f'[{self._song.artist} - {self._song.title}] - {message}')
+
+    def debug(self, message: str):
+        self._logger.debug(f'[{self._song.artist} - {self._song.title}] - {message}')
+
+    def error(self, message: str):
+        self._logger.error(f'[{self._song.artist} - {self._song.title}] - {message}')
+
+
+class SongMatcher:
+    def __init__(self, song: SpotifySong):
+        self._logger = MatchLogger(song)
+        self.song = song
+        self.match = False
+        self.match_type = None
+        self.match_message = None
+        self.match_payload = None
+
+    def _match_via_isrc(self):
+        track = Deezer.API.get_track(client.api, f'isrc:{self.song.isrc}')
+
+        self._logger.debug(f'Matched - [isrc]')
+        self.match = True
+        self.match_type = "isrc"
+        self.match_payload = track
+
+    def _match_fuzzy(self):
+        deezer_search = Deezer.API.advanced_search(
+            client.api,  # self
+            self.song.artist,  # artist
+            self.song.album,  # album
+            self.song.title  # track name
+        )
+
+        if len(deezer_search['data']) > 0:
+            self._logger.debug(f'Matched - [fuzzy]')
+            self.match = True
+            self.match_type = "fuzzy"
+            self.match_payload = deezer_search['data'][0]
+        else:
+            self._logger.debug(f'Failed fuzzy searching, SpotifyId: {self.song.id_}')
+
+    def search(self):
+        try:
+            self._match_via_isrc()
+        except DataException:
+            self._match_fuzzy()
+        except Exception as ex:
+            raise Exception(ex)
+
+        if self.match:
+            if 'link' not in self.match_payload:
+                self._logger.warning(f'[SpotifyId:{self.song.id_}] - Matched but response does not contain a Deezer link, unmatching..')
+                self.match = False
+                self.match_message = "Matched but response does not contain a Deezer link"
+                return
+
+            if self.match_payload.get('artist') is not None and not self.match_payload['artist'].get('name'):
+                self._logger.warning(
+                    f'[SpotifyId:{self.song.id_}] - Matched but response does not contain an Deezer artist, unmatching..')
+                self.match = False
+                self.match_message = f"Matched but response does not contain a artist name, likely this link will not work. Matched link: '{self.match_payload['link']}'"
+                return
+
+            if 'id' not in self.match_payload:
+                self._logger.warning(
+                    f'[SpotifyId:{self.song.id_}] - Matched but response does not contain a Deezer id, unmatching..')
+                self.match = False
+                self.match_message = f"Matched but response does not contain a Deezer id"
