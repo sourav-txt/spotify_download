@@ -118,6 +118,7 @@ class DeemixDownloader:
         song = data['song']
         download_obj = data['download_obj']
 
+
         logger = DownloadLogger(index=index, total=num_urls_to_download, song=song)
         listener = LogListener()
         dl = Downloader(self.dz, download_obj, self.config, listener)
@@ -349,6 +350,10 @@ def download_songs(songs: List[ProcessedSong]):
             .replace('MAX_BITRATE', bitrate_name_to_number[config["DEEMIX_MAX_BITRATE"]])
     )
 
+    # deemix_config = DEFAULTS
+    # deemix_config["DOWNLOAD_LOCATION_PATH"] = config["DEEMIX_DOWNLOAD_PATH"]
+    # deemix_config["MAX_BITRATE"] = bitrate_name_to_number[config["DEEMIX_MAX_BITRATE"]]
+
     skip_low_quality = True if config['DEEMIX_SKIP_LOW_QUALITY'] and config['DEEMIX_MAX_BITRATE'] == 'lossless' else False
 
     downloader = DeemixDownloader(arl=config["deemix"]["arl"], config=deemix_config, skip_low_quality=skip_low_quality)
@@ -441,3 +446,85 @@ template_config = """
   "tagsLanguage": ""
 }
 """
+
+DEFAULTS = {
+  "downloadLocation": "DOWNLOAD_LOCATION_PATH",
+  "tracknameTemplate": "%artist% - %title%",
+  "albumTracknameTemplate": "%tracknumber% - %title%",
+  "playlistTracknameTemplate": "%position% - %artist% - %title%",
+  "createPlaylistFolder": True,
+  "playlistNameTemplate": "%playlist%",
+  "createArtistFolder": False,
+  "artistNameTemplate": "%artist%",
+  "createAlbumFolder": True,
+  "albumNameTemplate": "%artist% - %album%",
+  "createCDFolder": True,
+  "createStructurePlaylist": False,
+  "createSingleFolder": False,
+  "padTracks": True,
+  "paddingSize": "0",
+  "illegalCharacterReplacer": "_",
+  "queueConcurrency": 3,
+  "maxBitrate": "MAX_BITRATE",
+  "feelingLucky": False,
+  "fallbackBitrate": False,
+  "fallbackSearch": False,
+  "fallbackISRC": False,
+  "logErrors": True,
+  "logSearched": False,
+  "overwriteFile": False,
+  "createM3U8File": False,
+  "playlistFilenameTemplate": "playlist",
+  "syncedLyrics": False,
+  "embeddedArtworkSize": 800,
+  "embeddedArtworkPNG": False,
+  "localArtworkSize": 1400,
+  "localArtworkFormat": "jpg",
+  "saveArtwork": True,
+  "coverImageTemplate": "cover",
+  "saveArtworkArtist": False,
+  "artistImageTemplate": "folder",
+  "jpegImageQuality": 90,
+  "dateFormat": "Y-M-D",
+  "albumVariousArtists": True,
+  "removeAlbumVersion": False,
+  "removeDuplicateArtists": True,
+  "titleCasing": "nothing",
+  "artistCasing": "nothing",
+  "executeCommand": "",
+  "tags": {
+    "title": True,
+    "artist": True,
+    "artists": True,
+    "album": True,
+    "cover": True,
+    "trackNumber": True,
+    "trackTotal": False,
+    "discNumber": True,
+    "discTotal": False,
+    "albumArtist": True,
+    "genre": True,
+    "year": True,
+    "date": True,
+    "explicit": False,
+    "isrc": True,
+    "length": True,
+    "barcode": True,
+    "bpm": True,
+    "replayGain": False,
+    "label": True,
+    "lyrics": False,
+    "syncedLyrics": False,
+    "copyright": False,
+    "composer": False,
+    "involvedPeople": False,
+    "source": False,
+    "rating": False,
+    "savePlaylistAsCompilation": False,
+    "useNullSeparator": False,
+    "saveID3v1": True,
+    "multiArtistSeparator": "default",
+    "singleAlbumArtist": False,
+    "coverDescriptionUTF8": False
+  }
+}

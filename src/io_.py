@@ -1,10 +1,8 @@
-
-
-# local imports
 import json
 import os
 import pathlib
 
+# local imports
 from src.config import load as load_config
 
 #logger = rootLogger.getChild('IO')
@@ -17,7 +15,6 @@ def verify_files():
     for f in files:
         f = os.path.join(config["DATA_PERSISTENT_DATA_ROOT"], f)
         if not pathlib.Path(f).is_file():
-            print(f'{f} not found, creating blank file')
             with open(f, mode='w', encoding='utf-8') as fp:
                 json.dump({}, fp)
 

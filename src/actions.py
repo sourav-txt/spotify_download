@@ -1,6 +1,8 @@
 from src import spotify_api, transform, download, pushover_api, autoscan_api, git_api, deemix_api
 from src.log import rootLogger
 
+from datetime import datetime
+
 logger = rootLogger.getChild('ACTIONS')
 
 
@@ -19,7 +21,7 @@ def auto():
     download.missing_tracks()
     autoscan_api.scan(download.downloaded_track_paths)
 
-    git_api.commit_files(f'Spotify Downloader auto commit {download.return_download_commence()}')
+    git_api.commit_files(f'Spotify Downloader auto commit {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
     if len(download.downloaded_track_paths) >= 1:
         pushover_api.send_notification(
