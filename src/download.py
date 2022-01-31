@@ -2,7 +2,7 @@ import json
 from typing import List
 
 # local imports
-from src.deemix_api import DownloadStatus, bitrate_name_to_number
+from src.deemix_api import DownloadStatus, get_deemix_config
 from src.log import rootLogger
 from src.config import load as load_config
 from src import transform, deemix_api
@@ -23,13 +23,7 @@ def missing_tracks():
         return
 
     logger.info(f'Downloading {len(songs)} song(s) from Deezer')
-
-    deemix_config = json.loads(
-        deemix_api.template_config
-            .replace('DOWNLOAD_LOCATION_PATH', config["DEEMIX_DOWNLOAD_PATH"])
-            .replace('MAX_BITRATE', str(bitrate_name_to_number[config["DEEMIX_MAX_BITRATE"]]))
-    )
-    downloader = deemix_api.DeemixDownloader(arl=config["DEEMIX_ARL"], config=deemix_config, skip_low_quality=True)
+    downloader = deemix_api.DeemixDownloader(arl=config["DEEMIX_ARL"], config=get_deemix_config(), skip_low_quality=True)
     downloader.download_songs(songs)
     downloaded_songs, failed_songs = downloader.get_report()
     logger.info(f'Successfully downloaded {len(downloaded_songs)}/{len(songs)}')

@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 import hashlib
 import json
 import os
@@ -9,9 +9,8 @@ import psutil
 # deemix
 from deezer import Deezer
 from deemix import generateDownloadObject
-from deemix.downloader import Downloader, generatePath, extensions, getPreferredBitrate
-from deemix.utils import getBitrateNumberFromText, formatListener
-from deemix.types.Track import Track
+from deemix.downloader import Downloader
+from deemix.utils import getBitrateNumberFromText
 from deemix.types.DownloadObjects import Single
 
 # local imports
@@ -24,24 +23,15 @@ config = load_config()
 arl_valid = False
 logger = rootLogger.getChild('DEEMIX_API')
 
-def get_threads():
-    try:
-        threads = int(config["THREADS"])
-        threads = threads if int(config["THREADS"]) <= psutil.cpu_count() else psutil.cpu_count()
-    except:
-        logger.warning(f'THREADING - Failed parsing int from "{config["THREADS"]}"')
-        threads = psutil.cpu_count()
 
-    return threads
-
-
-def get_md5(file):
-    md5_hash = hashlib.md5()
-    with open(file, "rb") as f:
-        # Read and update hash in chunks of 4K
-        for byte_block in iter(lambda: f.read(4096), b""):
-            md5_hash.update(byte_block)
-        return md5_hash.hexdigest()
+# bitrate_name_to_number = {
+#     '360': 15,
+#     '360_mq': 14,
+#     '360_lq': 13,
+#     'lossless': 9,
+#     '320': 3,
+#     '128': 1
+# }
 
 
 class LogListener:
@@ -118,12 +108,13 @@ class DeemixDownloader:
         song = data['song']
         download_obj = data['download_obj']
 
-
         logger = DownloadLogger(index=index, total=num_urls_to_download, song=song)
         listener = LogListener()
         dl = Downloader(self.dz, download_obj, self.config, listener)
+
         logger.info(action='STARTING', message='')
         dl.start()
+
         self.update_download_report(dl.downloadObject, song, listener, logger)
 
     def download_songs(self, songs: List[ProcessedSong]):
@@ -138,30 +129,11 @@ class DeemixDownloader:
             raise Exception('Failed to login with arl, you may need to refresh it')
 
         logger.info(f'Gathering song information in preparation for download..')
-
-        from timeit import default_timer as timer
-        start = timer()
         download_objs = {v.spotify_id: {'song': v, 'download_obj': generateDownloadObject(self.dz, v.deezer_url, self.config['maxBitrate'])} for v in self.songs_to_download}
-        end = timer()
-        #print(f'Single threaded took: {str(end - start)}')  # Time in seconds, e.g. 5.38091952400282
+        threads = get_threads()
 
-        # test multithreaded
-        # start = timer()
-        # download_objs = {}
-        # with ThreadPoolExecutor(2) as executor:
-        #     for song in self.songs_to_download:
-        #         download_objs[song.spotify_id] = {
-        #             'song': song,
-        #             'download_obj': executor.submit(generateDownloadObject(self.dz, song.deezer_url, self.config['maxBitrate']))
-        #         }
-        # end = timer()
-        # print(f'Multi threaded (2) took: {str(end - start)}')
-
-        #  raise Exception('stop')
         num_urls_to_download = len(self.songs_to_download)
-        i = 0
-        #for k in download_objs:
-        with ThreadPoolExecutor(get_threads()) as executor:
+        with ThreadPoolExecutor(threads) as executor:
             for i, k in enumerate(download_objs):
                 v = download_objs[k]
                 executor.submit(self.download_wrapper, {
@@ -170,21 +142,7 @@ class DeemixDownloader:
                     'song': v['song'],
                     'download_obj': v['download_obj']
                 })
-
-            # try:
-            #     #isrc = self.extract_isrc_from_download_object(v['download_obj'])
-            #     dl_logger = DownloadLogger(index=(i+1), total=num_urls_to_download, song=v['song'])
-            #     listener = LogListener()
-            #     dl = Downloader(self.dz, v['download_obj'], self.config, listener)
-            #     dl_logger.info('Download starting')
-            #     dl.start()
-            #
-            #     self.update_download_report(dl.downloadObject, v['song'],listener, dl_logger)
-            #
-            # except Exception as ex:
-            #     logger.error(ex)
-
-            #i += 1
+            executor.shutdown()
 
     @staticmethod
     def download_skipped(listener: LogListener):
@@ -262,37 +220,24 @@ class DeemixDownloader:
         return obj.single["trackAPI"]["isrc"]
 
 
-def extract_path_and_filename_from_track_api(downloader: Downloader, download_obj: Single):
-    track = Track().parseData(
-        dz=downloader.dz,
-        track_id=downloader.downloadObject.single["trackAPI"]["id"],
-        trackAPI=downloader.downloadObject.single["trackAPI"],
-        albumAPI=None,
-        playlistAPI=None
-    )
-    (filename, filepath, artistPath, coverPath, extrasPath) = generatePath(track, download_obj, downloader.settings)
+def get_threads():
+    try:
+        threads = int(config["THREADS"])
+        threads = threads if int(config["THREADS"]) <= psutil.cpu_count() else psutil.cpu_count()
+    except:
+        threads = psutil.cpu_count()
+        logger.warning(f'THREADING - Failed parsing int from "{config["THREADS"]}", using max available ({str(threads)})')
 
-    selectedFormat = getPreferredBitrate(
-        downloader.dz,
-        track,
-        downloader.bitrate,
-        downloader.settings['fallbackBitrate'],
-        downloader.settings['feelingLucky'],
-        downloader.downloadObject.uuid,
-        downloader.listener
-    )
-
-    return os.path.join(filepath, filename + extensions[selectedFormat]), filename
+    return threads
 
 
-bitrate_name_to_number = {
-    '360': 15,
-    '360_mq': 14,
-    '360_lq': 13,
-    'lossless': 9,
-    '320': 3,
-    '128': 1
-}
+def get_md5(file):
+    md5_hash = hashlib.md5()
+    with open(file, "rb") as f:
+        # Read and update hash in chunks of 4K
+        for byte_block in iter(lambda: f.read(4096), b""):
+            md5_hash.update(byte_block)
+        return md5_hash.hexdigest()
 
 
 def check_deemix_config():
@@ -341,23 +286,18 @@ def check_arl_valid():
             raise Exception('Failed to login with arl, you may need to refresh it')
 
 
-def download_songs(songs: List[ProcessedSong]):
-    #logger.info(f'Downloading {len(urls)} song(s) from Deezer')
+def get_deemix_config():
+    deemix_config = DEFAULTS.copy()
+    deemix_config["downloadLocation"] = config["DEEMIX_DOWNLOAD_PATH"]
+    #deemix_config["maxBitrate"] = bitrate_name_to_number[config["DEEMIX_MAX_BITRATE"]]
+    deemix_config["maxBitrate"] = getBitrateNumberFromText(config["DEEMIX_MAX_BITRATE"])
+    return deemix_config
 
-    deemix_config = json.loads(
-        template_config
-            .replace('DOWNLOAD_LOCATION_PATH', config["DEEMIX_DOWNLOAD_PATH"])
-            .replace('MAX_BITRATE', bitrate_name_to_number[config["DEEMIX_MAX_BITRATE"]])
-    )
 
-    # deemix_config = DEFAULTS
-    # deemix_config["DOWNLOAD_LOCATION_PATH"] = config["DEEMIX_DOWNLOAD_PATH"]
-    # deemix_config["MAX_BITRATE"] = bitrate_name_to_number[config["DEEMIX_MAX_BITRATE"]]
-
-    skip_low_quality = True if config['DEEMIX_SKIP_LOW_QUALITY'] and config['DEEMIX_MAX_BITRATE'] == 'lossless' else False
-
-    downloader = DeemixDownloader(arl=config["deemix"]["arl"], config=deemix_config, skip_low_quality=skip_low_quality)
-    downloader.download_songs(songs)
+# def download_songs(songs: List[ProcessedSong]):
+#     skip_low_quality = True if config['DEEMIX_SKIP_LOW_QUALITY'] and config['DEEMIX_MAX_BITRATE'] == 'lossless' else False
+#     downloader = DeemixDownloader(arl=config["deemix"]["arl"], config=get_deemix_config(), skip_low_quality=skip_low_quality)
+#     downloader.download_songs(songs)
 
 
 template_config = """
@@ -450,26 +390,26 @@ template_config = """
 DEFAULTS = {
   "downloadLocation": "DOWNLOAD_LOCATION_PATH",
   "tracknameTemplate": "%artist% - %title%",
-  "albumTracknameTemplate": "%tracknumber% - %title%",
+  "albumTracknameTemplate": "%artist% - %title%",
   "playlistTracknameTemplate": "%position% - %artist% - %title%",
-  "createPlaylistFolder": True,
+  "createPlaylistFolder": False,
   "playlistNameTemplate": "%playlist%",
-  "createArtistFolder": False,
+  "createArtistFolder": True,
   "artistNameTemplate": "%artist%",
   "createAlbumFolder": True,
   "albumNameTemplate": "%artist% - %album%",
-  "createCDFolder": True,
-  "createStructurePlaylist": False,
-  "createSingleFolder": False,
+  "createCDFolder": False,
+  "createStructurePlaylist": True,
+  "createSingleFolder": True,
   "padTracks": True,
   "paddingSize": "0",
   "illegalCharacterReplacer": "_",
-  "queueConcurrency": 3,
-  "maxBitrate": "MAX_BITRATE",
+  "maxBitrate": "9", # default to lossless
   "feelingLucky": False,
   "fallbackBitrate": False,
   "fallbackSearch": False,
-  "fallbackISRC": False,
+  "fallbackISRC": True,
+  "featuredToTitle": True,
   "logErrors": True,
   "logSearched": False,
   "overwriteFile": False,
@@ -509,7 +449,7 @@ DEFAULTS = {
     "explicit": False,
     "isrc": True,
     "length": True,
-    "barcode": True,
+    "barcode": False,
     "bpm": True,
     "replayGain": False,
     "label": True,
