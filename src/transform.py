@@ -80,8 +80,8 @@ def process_match(matcher: SongMatcher, processed_songs, count_matched: int):
         spotify_id=matcher.song.id_,
         deezer_title=matcher.match_payload['title'] if matcher.match else None,
         deezer_artist=matcher.match_payload['artist']['name'] if matcher.match else None,
-        #TODO: deezer fuzzy search payload doesnt return isrc of matched item
-        deezer_isrc=None,#matcher.match_payload['isrc'] if matcher.match else None,
+        # deezer fuzzy search payload doesnt return isrc of matched item
+        deezer_isrc=matcher.match_payload.get('isrc') if matcher.match else None,
         deezer_url=matcher.match_payload['link'] if matcher.match else None,
         deezer_id=matcher.match_payload['id'] if matcher.match else None,
         matched=matcher.match,

@@ -1,20 +1,15 @@
 import json
 import os
 
-# local imports
-#from src.log import rootLogger
-
 cfg = None
 
 
 class Configuration:
     def __init__(self):
-        #self._logger = rootLogger.getChild('Configuration')
         self.config = {}
         self._load_config()
 
     def _load_config(self):
-        #print('Load config is invoked..')
         loaded = self._load_config_file()
         # TODO: Schema validation
         self.config = self._flatten_settings(loaded)
@@ -23,15 +18,13 @@ class Configuration:
     def _load_config_file():
         file = os.path.join(os.path.dirname(__file__), '..', 'config.json')
         if not os.path.isfile(file):
-            # logger.error(f'Unable to find config file at: {file}')
-            raise
+            raise Exception(f'Unable to find config file at: {file}')
 
         try:
             with open(os.path.join(file), mode='r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as ex:
-            # logger.error(f'Failed to open config file {file}, exception was: ', ex)
-            raise
+            raise Exception(f'Failed to open config file {file}, exception was: ', ex)
 
     @staticmethod
     def _flatten_settings(settings: dict):

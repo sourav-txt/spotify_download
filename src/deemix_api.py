@@ -420,7 +420,7 @@ DEFAULTS = {
   "embeddedArtworkPNG": False,
   "localArtworkSize": 1400,
   "localArtworkFormat": "jpg",
-  "saveArtwork": True,
+  "saveArtwork": False,
   "coverImageTemplate": "cover",
   "saveArtworkArtist": False,
   "artistImageTemplate": "folder",
