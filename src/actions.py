@@ -1,4 +1,4 @@
-from src import spotify_api, transform, download, pushover_api, autoscan_api, git_api, deemix_api
+from src import spotify_api, transform, download, pushover_api, autoscan_api, git_api, deemix_api, io_
 from src.log import rootLogger
 
 from datetime import datetime
@@ -69,4 +69,10 @@ def scan(paths):
 def playlist_stats():
     logger.info('Script started with -playlist-stats flag')
     spotify_api.display_playlist_stats()
+    logger.info('Script finished')
+
+
+def validate_downloaded_files():
+    logger.info('Script started with -validate-downloaded-files flag')
+    io_.display_missing_files()
     logger.info('Script finished')
