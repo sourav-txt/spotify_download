@@ -142,7 +142,6 @@ class DeemixDownloader:
                     'song': v['song'],
                     'download_obj': v['download_obj']
                 })
-            executor.shutdown()
 
     @staticmethod
     def download_skipped(listener: LogListener):
@@ -252,20 +251,6 @@ def check_deemix_config():
     if config["DEEMIX_MAX_BITRATE"] not in accepted_bitrates:
         logger.error(f'{config["DEEMIX_MAX_BITRATE"]} must be one of {",".join(accepted_bitrates)}')
 
-# txt = str(txt).lower()
-#     if txt in ['flac', 'lossless', '9']:
-#         return TrackFormats.FLAC
-#     if txt in ['mp3', '320', '3']:
-#         return TrackFormats.MP3_320
-#     if txt in ['128', '1']:
-#         return TrackFormats.MP3_128
-#     if txt in ['360', '360_hq', '15']:
-#         return TrackFormats.MP4_RA3
-#     if txt in ['360_mq', '14']:
-#         return TrackFormats.MP4_RA2
-#     if txt in ['360_lq', '13']:
-#         return TrackFormats.MP4_RA1
-
 
 def check_arl_valid():
     logger.debug(f'Checking if arl is valid')
@@ -289,15 +274,8 @@ def check_arl_valid():
 def get_deemix_config():
     deemix_config = DEFAULTS.copy()
     deemix_config["downloadLocation"] = config["DEEMIX_DOWNLOAD_PATH"]
-    #deemix_config["maxBitrate"] = bitrate_name_to_number[config["DEEMIX_MAX_BITRATE"]]
     deemix_config["maxBitrate"] = getBitrateNumberFromText(config["DEEMIX_MAX_BITRATE"])
     return deemix_config
-
-
-# def download_songs(songs: List[ProcessedSong]):
-#     skip_low_quality = True if config['DEEMIX_SKIP_LOW_QUALITY'] and config['DEEMIX_MAX_BITRATE'] == 'lossless' else False
-#     downloader = DeemixDownloader(arl=config["deemix"]["arl"], config=get_deemix_config(), skip_low_quality=skip_low_quality)
-#     downloader.download_songs(songs)
 
 
 template_config = """
@@ -397,7 +375,7 @@ DEFAULTS = {
   "createArtistFolder": True,
   "artistNameTemplate": "%artist%",
   "createAlbumFolder": True,
-  "albumNameTemplate": "%artist% - %album%",
+  "albumNameTemplate": "%album%",
   "createCDFolder": False,
   "createStructurePlaylist": True,
   "createSingleFolder": True,

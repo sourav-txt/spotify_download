@@ -74,5 +74,6 @@ def playlist_stats():
 
 def validate_downloaded_files():
     logger.info('Script started with -validate-downloaded-files flag')
-    io_.display_missing_files()
+    missing = io_.get_missing_files()
+    logger.info(f'Found {str(missing)} missing songs')
     logger.info('Script finished')

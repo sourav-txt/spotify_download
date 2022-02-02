@@ -58,11 +58,15 @@ def persist_liked_songs(songs):
     dump_json(file, songs)
 
 
-def display_missing_files():
+def get_missing_files():
     f = os.path.join(config["DATA_PERSISTENT_DATA_ROOT"], config["DATA_FILES_PROCESSED_SONGS"])
     with open(f, mode='r', encoding='utf-8-sig') as f:
         processed_songs = json.load(f)
 
+    missing = 0
     for path in [v['download_path'] for k, v in processed_songs.items() if v['downloaded']]:
         if not os.path.isfile(path):
             print(f'[MISSING] - {path}')
+            missing += 1
+
+    return missing
