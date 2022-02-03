@@ -191,8 +191,23 @@ def get_failed_download_stats():
     return ret
 
 
+def get_failed_download_status_summary():
+    ret = {}
+    processed_songs = as_processed_song(load_processed_songs())
+    for k in processed_songs:
+        song = processed_songs[k]
+        if song.download_failed:
+            if song.download_failed_reason not in ret:
+                ret[song.download_failed_reason] = 1
+            else:
+                ret[song.download_failed_reason] += 1
+
+    return [{'Number': v, 'Reason': k} for k, v in ret.items()]
+
+
 def display_failed_download_stats():
-    stats = get_failed_download_stats()
+    stats = get_failed_download_status_summary()
+    # stats = get_failed_download_stats()
     if len(stats) == 0:
         logger.info(f'No failed downloads')
         return
@@ -201,6 +216,13 @@ def display_failed_download_stats():
     rows = [x.values() for x in stats]
     print()
     print(tabulate(rows, header))
+
+
+
+
+
+
+
 
 
 
