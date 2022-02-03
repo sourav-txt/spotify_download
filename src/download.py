@@ -10,12 +10,12 @@ from src import transform, deemix_api
 logger = rootLogger.getChild('DOWNLOAD')
 
 config = load_config()
-downloaded_track_paths = []
+downloaded_song_paths = []
 
 
 def missing_tracks():
     logger.info('Getting missing tracks to download')
-    songs = transform.get_tracks_to_download()
+    songs = transform.get_songs_to_download()
 
     logger.info(f'{len(songs)} tracks pending download')
     if not songs:
@@ -23,21 +23,21 @@ def missing_tracks():
         return
 
     logger.info(f'Downloading {len(songs)} song(s) from Deezer')
-    downloader = deemix_api.DeemixDownloader(arl=config["DEEMIX_ARL"], config=get_deemix_config(), skip_low_quality=True)
+    downloader = deemix_api.DeemixDownloader(
+        arl=config["DEEMIX_ARL"], config=get_deemix_config(), skip_low_quality=config['DEEMIX_SKIP_LOW_QUALITY'])
     downloader.download_songs(songs)
-    downloaded_songs, failed_songs = downloader.get_report()
-    logger.info(f'Successfully downloaded {len(downloaded_songs)}/{len(songs)}')
+    failed_songs, succeeded_songs, reports = downloader.get_report()
+    logger.info(f'Successfully downloaded {succeeded_songs}/{len(songs)}')
 
-    transform.set_tracks_as_downloaded(downloaded_songs)
-    transform.set_tracks_as_failed_to_download(failed_songs)
-
-    get_file_download_paths(downloaded_songs)
+    transform.persist_download_status(reports)
+    get_file_download_paths(reports)
 
 
 def get_file_download_paths(download_report: List[DownloadStatus]):
-    global downloaded_track_paths
+    global downloaded_song_paths
 
     for k in download_report:
-        downloaded_track_paths.append(download_report[k].download_path)
+        if download_report[k].success:
+            downloaded_song_paths.append(download_report[k].download_path)
 
 

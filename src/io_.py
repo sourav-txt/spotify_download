@@ -4,8 +4,9 @@ import pathlib
 
 # local imports
 from src.config import load as load_config
+from src.log import rootLogger
 
-#logger = rootLogger.getChild('IO')
+logger = rootLogger.getChild('IO')
 config = load_config()
 
 
@@ -44,7 +45,6 @@ def dump_json(file, obj):
         return obj.__dict__
 
     with open(file, mode='w', encoding='utf-8') as f:
-        #TODO: reused - refine
         json.dump(obj, f, indent=4, sort_keys=True, default=obj_dict)
 
 

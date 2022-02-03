@@ -18,6 +18,8 @@ def main():
     required.add_argument('-manual-scan', action='store_true', help='Invokes Autoscan API against provided paths')
     required.add_argument('-validate-downloaded-files', action='store_true', help='Enumerates processed songs that are marked as downloaded and validates they are there')
     required.add_argument('-playlist-stats', action='store_true', help='Displays stats associated with Spotify playlists')
+    required.add_argument('-failed-download-stats', action='store_true',
+                          help='Displays stats associated with songs that have failed to download')
     parser.add_argument('--paths', required='-manual-scan' in sys.argv, type=str, nargs="*",
                         help='List of paths to scan')
     parser.add_argument('--sync-liked-custom-user', action='store_true', required=False,
@@ -57,6 +59,8 @@ def main():
         actions.playlist_stats()
     elif args.validate_downloaded_files:
         actions.validate_downloaded_files()
+    elif args.failed_download_stats:
+        actions.failed_download_stats()
     else:
         print('No arguments specified, try main.py --help')
 

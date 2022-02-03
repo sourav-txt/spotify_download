@@ -7,6 +7,5 @@ GitPython==3.1.12
 requests==2.25.1
 tabulate==0.8.7
 psutil==5.9.0
-#git+https://github.com/jbh-cloud/spotify_download_deemix@main#egg=deemix
 git+https://github.com/jbh-cloud/spotify_download_deemix@v3.6.7#egg=deemix
-
+jsonschema~=4.4.0

@@ -33,4 +33,4 @@ def scan(paths):
                 logger.debug(f'Plex scan request: {p}')
             else:
                 logger.error(f'Failed to send Plex scan notification: {p}')
-        logger.info(f'Processed {len(paths)} scan requests')
+        logger.info(f'Processed {len(paths)} scan request(s)')

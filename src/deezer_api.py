@@ -1,4 +1,5 @@
 import deezer as Deezer
+import sys
 
 # local imports
 from deezer.errors import DataException
@@ -12,10 +13,6 @@ config = load_config()
 
 # load Deezer and login (for downloads), API is unauthenicated
 client = Deezer.Deezer()
-
-# TODO: productionize
-if not client.login_via_arl(config['DEEMIX_ARL'].strip()):
-    raise Exception('arl doesnt work')
 
 
 class MatchLogger:

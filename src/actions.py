@@ -19,14 +19,14 @@ def auto():
     spotify_api.download_liked()
     transform.process_liked()
     download.missing_tracks()
-    autoscan_api.scan(download.downloaded_track_paths)
+    autoscan_api.scan(download.downloaded_song_paths)
 
     git_api.commit_files(f'Spotify Downloader auto commit {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
-    if len(download.downloaded_track_paths) >= 1:
+    if len(download.downloaded_song_paths) >= 1:
         pushover_api.send_notification(
             'Spotify downloader',
-            f'Successfully downloaded {len(download.downloaded_track_paths)} new tracks'
+            f'Successfully downloaded {len(download.downloaded_song_paths)} new songs(s)'
         )
     pushover_api.send_notification('Spotify downloader', f'Script finished')
     logger.info('Script finished')
@@ -76,4 +76,10 @@ def validate_downloaded_files():
     logger.info('Script started with -validate-downloaded-files flag')
     missing = io_.get_missing_files()
     logger.info(f'Found {str(missing)} missing songs')
+    logger.info('Script finished')
+
+
+def failed_download_stats():
+    logger.info('Script started with -failed-download-stats flag')
+    transform.display_failed_download_stats()
     logger.info('Script finished')

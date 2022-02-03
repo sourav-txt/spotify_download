@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Dict
+from tabulate import tabulate
 
 # local imports
 from src.config import load as load_config
@@ -34,6 +35,7 @@ class ProcessedSong:
     download_url: str = None
     download_path: str = None
     download_md5: str = None
+    download_bitrate: str = None
     download_failed: str = None
     download_failed_reason: str = None
 
@@ -123,7 +125,7 @@ def process_liked():
     persist_processed_songs(processed_songs)
 
 
-def get_tracks_to_download():
+def get_songs_to_download():
     logger.debug(f'Opening {config["DATA_FILES_PROCESSED_SONGS"]}')
     processed_songs = as_processed_song(load_processed_songs())
 
@@ -142,33 +144,63 @@ def save_processed(processed):
     persist_processed_songs(processed)
 
 
-def set_tracks_as_downloaded(download_statuses):
+def persist_download_status(download_statuses):
     processed_songs = as_processed_song(load_processed_songs())
 
     for k in download_statuses:
-        processed_songs[k].match_pending_download = False
-        processed_songs[k].downloaded = True
-        processed_songs[k].download_isrc = download_statuses[k].downloaded_isrc
-        processed_songs[k].download_url = download_statuses[k].downloaded_url
-        processed_songs[k].download_path = download_statuses[k].download_path
-        processed_songs[k].download_md5 = download_statuses[k].md5
-        processed_songs[k].download_failed = False
-        processed_songs[k].download_failed_reason = None
+        status = download_statuses[k]
+
+        if status.success:
+            processed_songs[k].match_pending_download = False
+            processed_songs[k].downloaded = True
+            processed_songs[k].download_isrc = status.downloaded_isrc
+            processed_songs[k].download_url = status.downloaded_url
+            processed_songs[k].download_path = status.download_path
+            processed_songs[k].download_md5 = status.md5
+            processed_songs[k].download_bitrate = status.downloaded_bitrate
+            processed_songs[k].download_failed = False
+            processed_songs[k].download_failed_reason = None
+        else:
+            processed_songs[k].match_pending_download = True
+            processed_songs[k].downloaded = False
+            processed_songs[k].download_isrc = status.downloaded_isrc
+            processed_songs[k].download_url = status.downloaded_url
+            processed_songs[k].download_path = status.download_path
+            processed_songs[k].download_md5 = status.md5
+            processed_songs[k].download_failed = True
+            processed_songs[k].download_failed_reason = "\n".join([v['message'] for v in status.errors])
 
     save_processed(processed_songs)
 
 
-def set_tracks_as_failed_to_download(download_statuses):
+def get_failed_download_stats():
+    ret = []
+
     processed_songs = as_processed_song(load_processed_songs())
+    for k in processed_songs:
+        song = processed_songs[k]
+        if song.download_failed:
+            ret.append({
+                'spotifyId': song.spotify_id,
+                'deezerId': song.deezer_id,
+                'title': song.deezer_title,
+                'artist': song.deezer_artist,
+                'error': song.download_failed_reason
+            })
 
-    for k in download_statuses:
-        processed_songs[k].match_pending_download = True
-        processed_songs[k].downloaded = False
-        processed_songs[k].download_isrc = download_statuses[k].downloaded_isrc
-        processed_songs[k].download_url = download_statuses[k].downloaded_url
-        processed_songs[k].download_path = download_statuses[k].download_path
-        processed_songs[k].download_md5 = download_statuses[k].md5
-        processed_songs[k].download_failed = True
-        processed_songs[k].download_failed_reason = "\n".join([v['message'] for v in download_statuses[k].errors])
+    return ret
 
-    save_processed(processed_songs)
+
+def display_failed_download_stats():
+    stats = get_failed_download_stats()
+    if len(stats) == 0:
+        logger.info(f'No failed downloads')
+        return
+
+    header = stats[0].keys()
+    rows = [x.values() for x in stats]
+    print()
+    print(tabulate(rows, header))
+
+
+

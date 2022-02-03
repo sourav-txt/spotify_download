@@ -1,6 +1,5 @@
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
-import json
 import os
 from typing import List, Dict
 from dataclasses import dataclass
@@ -76,7 +75,6 @@ class DownloadLogger:
 
 @dataclass
 class DownloadStatus:
-    # TODO: add bitrate / file type
     spotify_id: str
     deezer_id: str
 
@@ -85,6 +83,9 @@ class DownloadStatus:
 
     requested_url: str
     downloaded_url: str
+
+    requested_bitrate: str
+    downloaded_bitrate: str
 
     success: bool
     skipped: bool
@@ -195,6 +196,8 @@ class DeemixDownloader:
             downloaded_isrc=downloaded_isrc,
             requested_url=requested_song.deezer_url,
             downloaded_url=downloaded_link,
+            requested_bitrate=self.config["maxBitrate"],
+            downloaded_bitrate=download_object.bitrate,
             success=status,
             skipped=False,
             errors=errors or [],
@@ -202,17 +205,31 @@ class DeemixDownloader:
             md5=md5,
         )
 
+    # def get_report(self):
+    #     succeeded = {}
+    #     failed = {}
+    #
+    #     for v in self.download_report.values():
+    #         if v.success:
+    #             succeeded[v.spotify_id] = v
+    #         else:
+    #             failed[v.spotify_id] = v
+    #
+    #     return succeeded, failed
     def get_report(self):
-        succeeded = {}
-        failed = {}
+        count_of_failed = 0
+        count_of_succeeded = 0
+        reports = {}
 
         for v in self.download_report.values():
-            if v.success:
-                succeeded[v.spotify_id] = v
+            if not v.success:
+                count_of_failed += 1
             else:
-                failed[v.spotify_id] = v
+                count_of_succeeded += 1
 
-        return succeeded, failed
+            reports[v.spotify_id] = v
+
+        return count_of_failed, count_of_succeeded, reports
 
     @staticmethod
     def extract_isrc_from_download_object(obj):
@@ -220,12 +237,16 @@ class DeemixDownloader:
 
 
 def get_threads():
+    machine_threads = psutil.cpu_count()
+    if config["THREADS"] == "":
+        return machine_threads
+
     try:
         threads = int(config["THREADS"])
-        threads = threads if int(config["THREADS"]) <= psutil.cpu_count() else psutil.cpu_count()
+        threads = threads if int(config["THREADS"]) <= machine_threads else machine_threads
     except:
-        threads = psutil.cpu_count()
-        logger.warning(f'THREADING - Failed parsing int from "{config["THREADS"]}", using max available ({str(threads)})')
+        threads = machine_threads
+        logger.warning(f'THREADING - Failed parsing int from "{config["THREADS"]}", using max available ({str(machine_threads)})')
 
     return threads
 
@@ -240,9 +261,13 @@ def get_md5(file):
 
 
 def check_deemix_config():
+    if os.path.isfile(config["DEEMIX_DOWNLOAD_PATH"]):
+        logger.error(f'{config["DEEMIX_DOWNLOAD_PATH"]} is a file, must not exist or be an existent folder')
+        raise
+
     if not os.path.isdir(config["DEEMIX_DOWNLOAD_PATH"]):
-        logger.error(f'{config["DEEMIX_DOWNLOAD_PATH"]} must be an existing folder')
-        raise Exception(f'{config["DEEMIX_DOWNLOAD_PATH"]} must be an existing folder')
+        logger.warning(f'{config["DEEMIX_DOWNLOAD_PATH"]} does not exist, creating')
+        os.mkdir(config["DEEMIX_DOWNLOAD_PATH"])
 
     if '\\' in config["DEEMIX_DOWNLOAD_PATH"]:
         config["DEEMIX_DOWNLOAD_PATH"] = config["DEEMIX_DOWNLOAD_PATH"].replace("\\", "/")
