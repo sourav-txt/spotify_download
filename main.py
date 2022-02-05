@@ -12,6 +12,8 @@ def main():
                           help='Populate OAuth cached creds')
     required.add_argument('-sync-liked', action='store_true', required=False,
                           help='Queries Spotify for liked songs and downloads metadata')
+    required.add_argument('-sync-liked-custom-user', action='store_true', required=False,
+                          help='Queries Spotify for liked songs for a manual user and downloads metadata')
     required.add_argument('-match-liked', action='store_true',
                           help='Queries locally saved liked song metadata and attempts to match on Deezer')
     required.add_argument('-download-missing', action='store_true', help='Attempts to download missing songs')
@@ -22,15 +24,13 @@ def main():
                           help='Displays stats associated with songs that have failed to download')
     parser.add_argument('--paths', required='-manual-scan' in sys.argv, type=str, nargs="*",
                         help='List of paths to scan')
-    parser.add_argument('--sync-liked-custom-user', action='store_true', required=False,
-                        help='Specifies a custom user to query Spotify for')
-    parser.add_argument('--spotify-client-id', required='--sync-liked-custom-user' in sys.argv, type=str,
+    parser.add_argument('--spotify-client-id', required='-sync-liked-custom-user' in sys.argv, type=str,
                         help='Custom Spotify user client id')
-    parser.add_argument('--spotify-client-secret', required='--sync-liked-custom-user' in sys.argv, type=str,
+    parser.add_argument('--spotify-client-secret', required='-sync-liked-custom-user' in sys.argv, type=str,
                         help='Custom Spotify user client secret')
-    parser.add_argument('--spotify-username', required='--sync-liked-custom-user' in sys.argv, type=str,
+    parser.add_argument('--spotify-username', required='-sync-liked-custom-user' in sys.argv, type=str,
                         help='Custom Spotify username')
-    parser.add_argument('--liked-songs-path', required='--sync-liked-custom-user' in sys.argv, type=str,
+    parser.add_argument('--liked-songs-path', required='-sync-liked-custom-user' in sys.argv, type=str,
                         help='Path to non-existent json file')
 
     args = parser.parse_args()

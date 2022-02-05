@@ -77,16 +77,12 @@ class DownloadLogger:
 class DownloadStatus:
     spotify_id: str
     deezer_id: str
-
     requested_isrc: str
     downloaded_isrc: str
-
     requested_url: str
     downloaded_url: str
-
     requested_bitrate: str
     downloaded_bitrate: str
-
     success: bool
     skipped: bool
     errors: List[str]
@@ -169,10 +165,10 @@ class DeemixDownloader:
             downloaded_isrc = download_object.single['trackAPI']['isrc']
             downloaded_link = download_object.single['trackAPI']['link']
             downloaded_id = download_object.single['trackAPI']['id']
-
+            download_skipped = self.download_skipped(listener)
             f = download_object.files[0]['path']
 
-            if self.download_skipped(listener):
+            if download_skipped:
                 dl_logger.info(action='FINSIHED', message=f'Skipping, already downloaded')
                 status = True
                 md5 = get_md5(f)
@@ -199,23 +195,12 @@ class DeemixDownloader:
             requested_bitrate=self.config["maxBitrate"],
             downloaded_bitrate=download_object.bitrate,
             success=status,
-            skipped=False,
+            skipped=download_skipped,
             errors=errors or [],
             download_path=f,
             md5=md5,
         )
 
-    # def get_report(self):
-    #     succeeded = {}
-    #     failed = {}
-    #
-    #     for v in self.download_report.values():
-    #         if v.success:
-    #             succeeded[v.spotify_id] = v
-    #         else:
-    #             failed[v.spotify_id] = v
-    #
-    #     return succeeded, failed
     def get_report(self):
         count_of_failed = 0
         count_of_succeeded = 0
@@ -302,93 +287,6 @@ def get_deemix_config():
     deemix_config["maxBitrate"] = getBitrateNumberFromText(config["DEEMIX_MAX_BITRATE"])
     return deemix_config
 
-
-template_config = """
-{
-  "downloadLocation": "DOWNLOAD_LOCATION_PATH",
-  "tracknameTemplate": "%artist% - %title%",
-  "albumTracknameTemplate": "%artist% - %title%",
-  "playlistTracknameTemplate": "%artist% - %title%",
-  "createPlaylistFolder": false,
-  "playlistNameTemplate": "%playlist%",
-  "createArtistFolder": true,
-  "artistNameTemplate": "%artist%",
-  "createAlbumFolder": true,
-  "albumNameTemplate": "%album%",
-  "createCDFolder": false,
-  "createStructurePlaylist": true,
-  "createSingleFolder": true,
-  "padTracks": true,
-  "paddingSize": "0",
-  "illegalCharacterReplacer": "_",
-  "queueConcurrency": 10,
-  "maxBitrate": "MAX_BITRATE",
-  "feelingLucky": false,
-  "fallbackBitrate": true,
-  "fallbackSearch": false,
-  "logErrors": true,
-  "logSearched": false,
-  "saveDownloadQueue": false,
-  "overwriteFile": "n",
-  "createM3U8File": false,
-  "syncedLyrics": false,
-  "embeddedArtworkSize": 1000,
-  "localArtworkSize": 1400,
-  "saveArtwork": false,
-  "coverImageTemplate": "cover",
-  "saveArtworkArtist": false,
-  "artistImageTemplate": "folder",
-  "PNGcovers": false,
-  "jpegImageQuality": 80,
-  "dateFormat": "Y-M-D",
-  "removeAlbumVersion": false,
-  "featuredToTitle": "0",
-  "titleCasing": "nothing",
-  "artistCasing": "nothing",
-  "executeCommand": "",
-  "tags": {
-    "title": true,
-    "artist": true,
-    "album": true,
-    "cover": true,
-    "trackNumber": true,
-    "trackTotal": false,
-    "discNumber": true,
-    "discTotal": false,
-    "albumArtist": true,
-    "genre": true,
-    "year": true,
-    "date": true,
-    "explicit": false,
-    "isrc": true,
-    "length": true,
-    "barcode": false,
-    "bpm": true,
-    "replayGain": false,
-    "label": true,
-    "lyrics": false,
-    "copyright": false,
-    "composer": true,
-    "rating": false,
-    "involvedPeople": false,
-    "savePlaylistAsCompilation": false,
-    "useNullSeparator": false,
-    "saveID3v1": true,
-    "multitagSeparator": "default",
-    "syncedLyrics": false,
-    "multiArtistSeparator": "default",
-    "singleAlbumArtist": false,
-    "coverDescriptionUTF8": false,
-    "source": false
-  },
-  "playlistFilenameTemplate": "playlist",
-  "embeddedArtworkPNG": false,
-  "localArtworkFormat": "jpg",
-  "albumVariousArtists": true,
-  "removeDuplicateArtists": false,
-  "tagsLanguage": ""
-}
-"""
 
 DEFAULTS = {
   "downloadLocation": "DOWNLOAD_LOCATION_PATH",

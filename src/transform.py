@@ -202,7 +202,7 @@ def get_failed_download_status_summary():
             else:
                 ret[song.download_failed_reason] += 1
 
-    return [{'Number': v, 'Reason': k} for k, v in ret.items()]
+    return [{'Failed downloads': v, 'Reason': k} for k, v in ret.items()]
 
 
 def display_failed_download_stats():

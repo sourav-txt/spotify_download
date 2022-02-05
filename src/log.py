@@ -1,5 +1,7 @@
 import errno
-import logging, sys, os
+import logging
+import sys
+import os
 from logging.handlers import RotatingFileHandler
 
 LOG_LEVEL = os.environ["SPOTIFY_DOWNLOAD_LOG_LEVEL"] if os.environ.get("SPOTIFY_DOWNLOAD_LOG_LEVEL") is not None else 'INFO'

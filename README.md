@@ -74,6 +74,13 @@ optional arguments:
 
 ```
 
+## Scheduling
+Assuming the app has been Spotify authorized at least once, you can run it on a schedule. For example:
+
+Cron (Every day at 2pm)
+```
+0 14 * * * {FULL_QUAL_PATH_TO_REPO}/venv/bin/python {FULL_QUAL_PATH_TO_REPO}/main.py -auto 
+```
 
 ## Configuration
 All configuration of this tool is done in ```config.json``` an example of which is contained in the project, ```config.json.example```.
